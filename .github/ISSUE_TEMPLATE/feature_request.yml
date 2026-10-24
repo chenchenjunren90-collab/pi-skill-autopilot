@@ -1,0 +1,43 @@
+name: Feature request
+description: Suggest a new trigger, store, or capability
+labels: ["enhancement"]
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Plan/goal plugin compatibility (new source of steps)
+        - Skill store (new registry)
+        - Capability detection (keywords, file types)
+        - Scoring / relevance
+        - Safety (scanning, confirmation)
+        - Commands and UX
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve
+      description: Describe the situation, not just the solution.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behaviour
+    validations:
+      required: false
+
+  - type: textarea
+    id: examples
+    attributes:
+      label: Example plans or prompts
+      description: Concrete text that should (or should not) trigger the behaviour.
+      render: text
+    validations:
+      required: false

@@ -1,0 +1,63 @@
+{
+  "name": "pi-skill-autopilot",
+  "version": "0.5.0",
+  "description": "Plan-aware skill provisioning for pi: after a plan or goal is produced, it predicts which skills each step needs, scores SkillHub store matches, asks you to confirm the batch, installs them, and continues the plan.",
+  "license": "MIT",
+  "author": "pi-skill-autopilot contributors",
+  "type": "module",
+  "keywords": [
+    "pi-package",
+    "pi",
+    "pi-extension",
+    "pi-coding-agent",
+    "skills",
+    "agent-skills",
+    "skill-store",
+    "skillhub",
+    "autopilot",
+    "plan",
+    "goal",
+    "auto-install"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chenchenjunren90-collab/pi-skill-autopilot.git"
+  },
+  "homepage": "https://github.com/chenchenjunren90-collab/pi-skill-autopilot#readme",
+  "bugs": {
+    "url": "https://github.com/chenchenjunren90-collab/pi-skill-autopilot/issues"
+  },
+  "files": [
+    "extensions",
+    "README.md",
+    "README.zh-CN.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "pi": {
+    "extensions": [
+      "./extensions/skill-autopilot/index.ts"
+    ]
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck",
+    "prepack": "npm run typecheck"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-ai": "^1.4.0",
+    "@earendil-works/pi-coding-agent": "^1.4.0",
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

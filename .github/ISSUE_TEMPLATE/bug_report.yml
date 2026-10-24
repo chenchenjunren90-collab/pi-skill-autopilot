@@ -1,0 +1,64 @@
+name: Bug report
+description: Something is not working as documented
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. This extension installs third-party code, so please include the log lines —
+        they usually identify the problem immediately.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you expected, and what actually happened.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Ask pi to ...
+        2. The agent wrote this plan:
+           Plan:
+           1. ...
+        3. The dialog showed ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: status
+    attributes:
+      label: Output of /skill-autopilot status
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log lines
+      description: From `~/.pi/agent/skill-autopilot/log.jsonl` — redact anything private.
+      render: json
+    validations:
+      required: false
+
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: pi version, plugin version, Node version, OS
+      placeholder: "pi 1.4.0 / pi-skill-autopilot 0.4.0 / Node 22.11 / Windows 11"
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues for this problem
+          required: true
