@@ -63,15 +63,27 @@ Please do not add tool names to an allowlist in `index.ts`; `planToolPattern` ex
 ## Publishing to npm
 
 `package.json` pins `publishConfig.registry` to `https://registry.npmjs.org/`, because a
-read-only mirror (for example `registry.npmmirror.com`) cannot accept `adduser` or
-`publish`. Only the auth commands need the explicit flag:
+read-only mirror (for example `registry.npmmirror.com`) cannot accept auth or `publish`.
+
+npm no longer allows account creation through the CLI (`--auth-type=legacy` returns
+403). Create the account in a browser at <https://www.npmjs.com/signup>, then either
+log in through the web flow or use an access token:
 
 ```bash
-npm adduser --auth-type=legacy --registry=https://registry.npmjs.org
+# web flow: prints a URL, completes in the browser
+npm login --auth-type=web
+
+# or, after generating a token at
+# https://www.npmjs.com/settings/<user>/tokens
+npm config set //registry.npmjs.org/:_authToken=<token>
+
 npm whoami --registry=https://registry.npmjs.org
 npm install            # prepack runs tsc, so devDependencies must exist
 npm publish            # publishConfig routes it to npmjs.org
 ```
+
+`www.npmjs.com` sits behind a Cloudflare challenge: a browser passes it, `curl`
+does not, so do not use CLI scraping to check whether the site is reachable.
 
 ## Reporting bugs
 
