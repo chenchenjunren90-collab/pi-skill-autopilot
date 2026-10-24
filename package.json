@@ -1,6 +1,6 @@
 {
   "name": "pi-skill-autopilot",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Plan-aware skill provisioning for pi: after a plan or goal is produced, it predicts which skills each step needs, scores SkillHub store matches, asks you to confirm the batch, installs them, and continues the plan.",
   "license": "MIT",
   "author": "pi-skill-autopilot contributors",
@@ -49,13 +49,15 @@
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",
-    "@earendil-works/pi-coding-agent": "*"
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*"
   },
   "devDependencies": {
     "@earendil-works/pi-ai": "^1.4.0",
     "@earendil-works/pi-coding-agent": "^1.4.0",
     "@types/node": "^22.10.0",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "@earendil-works/pi-tui": "^1.4.0"
   },
   "publishConfig": {
     "access": "public"

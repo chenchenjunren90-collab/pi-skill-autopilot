@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.6.0
+
+Multi-select and multi-gap detection.
+
+- **Checkbox picker** for both triggers: `↑↓` move, `space` toggle, `a` all/none, `enter` install the ticked ones, `esc` skip. Every row carries the reason it was proposed (matched capability or plan step) plus the store description. All boxes start ticked, so Enter installs everything.
+- **Several gaps at once.** Detection now groups candidates per distinct capability, so "convert this PDF to Excel and chart it" surfaces pdf + excel + chart instead of one winner for the whole prompt. A second skill that only duplicates an already-covered capability is skipped.
+- **Install loop instead of single install** for the ad-hoc path; progress shows `n/total`.
+- **Budget is enforced in the picker** (`本轮最多装 N 个`, clamped on confirm).
+- Non-TUI modes fall back to one all-or-nothing confirmation listing every item.
+- New pure module `pick.ts` (selection model) so the behaviour is testable without a terminal.
+- Note wording fixed: the ad-hoc path said 已自动安装 / "auto-installed" although it had always gone through a confirmation. It now reads 已安装（用户确认） and includes the scan level.
+
 ## 0.5.0
 
 Safety and packaging.

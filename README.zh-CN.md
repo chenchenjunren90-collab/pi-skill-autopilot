@@ -63,6 +63,27 @@ Agent 经常遇到"装个技能就能解决"的任务，然后要么放弃，要
 6. **顺序安装** —— 带状态栏进度
 7. **交接** —— 注入 `步骤 N → /绝对路径/SKILL.md`，agent 按步骤读对应文件
 
+### 勾选要装哪些
+
+检测到多个缺口时给你的是勾选框，不是单选：
+
+```
+❯ [x] 1. pdf-image-text-extractor v1.0.13   相关度 6
+        需求：pdf
+        从图片或 PDF 文档中识别并提取文字内容，支持多种图片格式…
+  [x] 2. excel-spreadsheet-cellcog v1.0.14  相关度 12
+        需求：excel spreadsheet
+  [x] 3. aihive-en-spreadsheet-chart-builder v1.0.0  相关度 8
+        需求：chart data visualization
+
+↑↓ 移动   space 勾选/取消   a 全选/全不选   enter 安装选中的   esc 跳过
+```
+
+- **每行都说明为什么装**：第一行是命中的能力（或计划步骤），第二行是该技能自己的说明。
+- **默认全部勾上**——直接 Enter 就是全装；想减掉哪个按 space。
+- **一个能力只出一个技能**：「把这个 PDF 转成 Excel 并画图」会出三行（pdf / excel / chart），重复覆盖同一能力的第二个技能不会列出来。
+- 没有终端的模式（RPC、`--print`、`--mode json`）退化成一次性「全装或都不装」确认。
+
 ## 评估到底用提示词还是量化？
 
 这部分值得说清楚，因为"让模型自己判断要不要装"很诱人但不可靠。

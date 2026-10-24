@@ -74,6 +74,27 @@ A write to `PLAN.md`, `.pi/tasks.json`, `roadmap.md`, … → parsed from the wr
 6. **Install in order** — sequential with a status-bar progress indicator.
 7. **Hand off** — a `custom_message` lists `step N → /abs/path/SKILL.md` so the agent reads the right file for the right step.
 
+### Choosing what to install
+
+When more than one gap is detected you get a checkbox list, not a single-choice prompt:
+
+```
+❯ [x] 1. pdf-image-text-extractor v1.0.13   相关度 6
+        需求：pdf
+        从图片或 PDF 文档中识别并提取文字内容，支持多种图片格式…
+  [x] 2. excel-spreadsheet-cellcog v1.0.14  相关度 12
+        需求：excel spreadsheet
+  [x] 3. aihive-en-spreadsheet-chart-builder v1.0.0  相关度 8
+        需求：chart data visualization
+
+↑↓ move   space toggle   a all/none   enter install selected   esc skip
+```
+
+- **Every row says why.** The first line under each skill is the capability that matched (or the plan step); the second is the store's own description.
+- **All boxes start ticked** — press Enter to install everything, Space to drop the ones you do not want.
+- **One skill per detected capability.** "Convert this PDF to Excel and chart it" yields three rows (pdf / excel / chart), and a second skill that only duplicates an already-covered capability is not offered.
+- In modes without a terminal (RPC, `--print`, `--mode json`) the list degrades to a single all-or-nothing confirmation.
+
 ## How candidates are evaluated
 
 This is the part worth being explicit about, because "let the model decide whether to install" is tempting and wrong.

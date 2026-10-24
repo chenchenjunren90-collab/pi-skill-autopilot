@@ -45,7 +45,18 @@ import {
 	type NeedSignal,
 } from "./matcher.ts";
 import { describeLevel, formatFindings, scanSkillDirectory, type RiskReport } from "./risk.ts";
+import {
+	chosenItems,
+	createPickState,
+	describeItem,
+	moveCursor,
+	selectedCount,
+	toggleAll,
+	toggleAt,
+	type PickItem,
+} from "./pick.ts";
 import { listStores, registerStore, resolveStore, type SkillStore } from "./store.ts";
+import { truncateToWidth } from "@earendil-works/pi-tui";
 import {
 	capabilityQuery,
 	extractPlanSteps,
@@ -481,56 +492,219 @@ function usableCandidates(candidates: Candidate[], cfg: AutopilotConfig): Candid
 	);
 }
 
+/** How many installs are still allowed by the session and daily caps. */
+function remainingBudget(cfg: AutopilotConfig): number {
+	const st = getState();
+	return Math.max(
+		0,
+		Math.min(cfg.maxInstallsPerSession - sessionInstalls, cfg.maxInstallsPerDay - st.installsToday),
+	);
+}
+
+/**
+ * Turn a detection into picker entries: one per distinct capability, so several
+ * gaps show up together, each with the reason it was proposed.
+ */
+function buildAdHocItems(detection: Detection, cfg: AutopilotConfig, cap = 6): PickItem[] {
+	const items: PickItem[] = [];
+	const used = new Set<string>();
+	const add = (candidate: Candidate, reason: string) => {
+		const key = normalizeId(candidate.publicSlug);
+		if (used.has(key) || items.length >= cap) return;
+		used.add(key);
+		items.push({ candidate, reason });
+	};
+
+	const coveredNeeds = new Set<string>();
+	for (const group of detection.perNeed) {
+		const best = usableCandidates(group.candidates, cfg)[0];
+		if (!best) continue;
+		add(best, `需求：${group.need.label}`);
+		coveredNeeds.add(group.need.query);
+	}
+
+	// Strong overall matches that no single need claimed. A candidate whose best
+	// matching capability is already covered would just be a second skill for the
+	// same need, so it is skipped.
+	for (const c of usableCandidates(detection.candidates, cfg)) {
+		let bestNeed: NeedSignal | undefined;
+		let bestScore = 0;
+		for (const group of detection.perNeed) {
+			const score = scoreEntry(c.entry, tokenize(group.need.query));
+			if (score > bestScore) {
+				bestScore = score;
+				bestNeed = group.need;
+			}
+		}
+		if (bestNeed && coveredNeeds.has(bestNeed.query) && items.length >= detection.perNeed.length) continue;
+		add(c, bestNeed ? `与本轮任务相关（${bestNeed.label}）` : "与本轮任务相关");
+	}
+
+	return items;
+}
+
 function describeCandidate(c: Candidate): string {
 	const desc = (c.entry.description || "").replace(/\s+/g, " ").slice(0, 70);
 	return `${c.publicSlug} v${c.entry.version || "?"}（相关度 ${c.score}）${desc ? ` — ${desc}` : ""}`;
 }
 
 /**
- * Ask the user which skill (if any) to install.
- * Returns undefined when the user skips or no dialog is available.
+ * Multi-select picker: checkboxes with a per-item reason and description.
+ * Enter installs everything ticked (default: everything), Space toggles one,
+ * `a` toggles all, Esc skips.
+ *
+ * Returns the chosen items, or undefined when skipped / no UI.
  */
 async function askWhichToInstall(
-	candidates: Candidate[],
+	items: PickItem[],
 	cfg: AutopilotConfig,
 	ctx: ExtensionContext,
 	title: string,
-): Promise<Candidate | undefined> {
-	const usable = usableCandidates(candidates, cfg).slice(0, 3);
+	limit = Number.POSITIVE_INFINITY,
+): Promise<PickItem[] | undefined> {
+	const usable = items.filter(
+		(it) =>
+			!isDenied(it.candidate, cfg) &&
+			!declinedSlugs.has(normalizeId(it.candidate.publicSlug)) &&
+			!inFlight.has(normalizeId(it.candidate.publicSlug)),
+	);
 	if (!usable.length) return undefined;
+
 	if (!ctx.hasUI) {
 		// no dialog available (print/json mode): never install silently
-		log({ kind: "confirm-skipped", reason: "no-ui", candidates: usable.map((c) => c.publicSlug) });
+		log({ kind: "confirm-skipped", reason: "no-ui", candidates: usable.map((it) => it.candidate.publicSlug) });
 		return undefined;
 	}
 
-	const skipLabel = "跳过 —— 不安装，继续执行我的任务";
-	try {
-		if (usable.length === 1) {
-			const ok = await ctx.ui.confirm(title, `${describeCandidate(usable[0])}\n\n安装后本轮会立即读取并使用它继续执行。`);
-			if (!ok) {
-				declinedSlugs.add(normalizeId(usable[0].publicSlug));
-				log({ kind: "declined", slug: usable[0].publicSlug });
-				return undefined;
-			}
-			return usable[0];
-		}
+	// ctx.ui.custom needs a real terminal; RPC forwards simple dialogs only.
+	if (ctx.mode !== "tui" || usable.length === 1) {
+		return askWithoutCheckboxes(usable, ctx, title);
+	}
 
-		const options = usable.map((c) => `安装 ${describeCandidate(c)}`);
-		options.push(skipLabel);
-		const picked = await ctx.ui.select(title, options);
-		const idx = picked ? options.indexOf(picked) : -1;
-		if (idx < 0 || idx >= usable.length) {
-			for (const c of usable) declinedSlugs.add(normalizeId(c.publicSlug));
-			log({ kind: "declined", slugs: usable.map((c) => c.publicSlug) });
+	try {
+		const picked = await ctx.ui.custom<PickItem[] | undefined>((tui, theme, keybindings, done) => {
+			let state = createPickState(usable);
+			let cachedWidth: number | undefined;
+			let cachedLines: string[] | undefined;
+
+			const invalidate = () => {
+				cachedWidth = undefined;
+				cachedLines = undefined;
+			};
+
+			return {
+				render(width: number): string[] {
+					if (cachedLines && cachedWidth === width) return cachedLines;
+					cachedWidth = width;
+
+					const out: string[] = [];
+					const cap = Number.isFinite(limit) ? `（本轮最多装 ${limit} 个）` : "";
+					out.push(theme.fg("accent", `${title}${cap}`));
+					out.push("");
+
+					usable.forEach((item, i) => {
+						const cursor = i === state.index ? "❯" : " ";
+						const box = state.selected[i] ? "[x]" : "[ ]";
+						const c = item.candidate;
+						const version = c.entry.version ? ` v${c.entry.version}` : "";
+						const head = `${cursor} ${box} ${i + 1}. ${c.publicSlug}${version}`;
+						out.push(
+							i === state.index
+								? theme.fg("accent", head) + theme.fg("dim", `   相关度 ${c.score}`)
+								: head + theme.fg("dim", `   相关度 ${c.score}`),
+						);
+						out.push(theme.fg("muted", `        ${item.reason}`));
+						const desc = (c.entry.description || "").replace(/\s+/g, " ").trim();
+						if (desc) out.push(theme.fg("dim", `        ${desc}`));
+						out.push("");
+					});
+
+					out.push(
+						theme.fg(
+							"dim",
+							`↑↓ 移动   space 勾选/取消   a 全选/全不选   enter 安装选中的 ${selectedCount(state)} 个   esc 跳过`,
+						),
+					);
+					cachedLines = out.map((line) => truncateToWidth(line, width));
+					return cachedLines;
+				},
+				handleInput(data: string): void {
+					if (keybindings.matches(data, "tui.select.up")) {
+						state = moveCursor(state, -1, usable.length);
+					} else if (keybindings.matches(data, "tui.select.down")) {
+						state = moveCursor(state, 1, usable.length);
+					} else if (data === " ") {
+						state = toggleAt(state, state.index);
+					} else if (data === "a" || data === "A") {
+						state = toggleAll(state);
+					} else if (keybindings.matches(data, "tui.select.confirm")) {
+						done(chosenItems(state, usable, limit));
+						return;
+					} else if (keybindings.matches(data, "tui.select.cancel")) {
+						done(undefined);
+						return;
+					} else {
+						return;
+					}
+					invalidate();
+					tui.requestRender();
+				},
+				invalidate,
+			};
+		});
+
+		if (!picked || !picked.length) {
+			for (const it of usable) declinedSlugs.add(normalizeId(it.candidate.publicSlug));
+			log({ kind: "declined", slugs: usable.map((it) => it.candidate.publicSlug), via: "picker" });
 			return undefined;
 		}
-		return usable[idx];
+
+		const installed = new Set(picked.map((it) => normalizeId(it.candidate.publicSlug)));
+		for (const it of usable) {
+			if (!installed.has(normalizeId(it.candidate.publicSlug))) {
+				declinedSlugs.add(normalizeId(it.candidate.publicSlug));
+			}
+		}
+		log({ kind: "picked", slugs: picked.map((it) => it.candidate.publicSlug), via: "picker" });
+		return picked;
+	} catch (err) {
+		log({ kind: "confirm-error", error: String(err) });
+		return askWithoutCheckboxes(usable, ctx, title);
+	}
+}
+
+/** Fallback for a single candidate, or for modes that cannot render a custom component. */
+async function askWithoutCheckboxes(
+	usable: PickItem[],
+	ctx: ExtensionContext,
+	title: string,
+): Promise<PickItem[] | undefined> {
+	try {
+		if (usable.length === 1) {
+			const it = usable[0];
+			const ok = await ctx.ui.confirm(title, `${describeCandidate(it.candidate)}\n${it.reason}`);
+			if (!ok) {
+				declinedSlugs.add(normalizeId(it.candidate.publicSlug));
+				log({ kind: "declined", slug: it.candidate.publicSlug });
+				return undefined;
+			}
+			return [it];
+		}
+
+		const lines = usable.flatMap((it) => describeItem(it));
+		const ok = await ctx.ui.confirm(title, `${lines.join("\n")}\n\n当前模式不支持多选，确认即安装以上全部。`);
+		if (!ok) {
+			for (const it of usable) declinedSlugs.add(normalizeId(it.candidate.publicSlug));
+			log({ kind: "declined", slugs: usable.map((it) => it.candidate.publicSlug), via: "confirm-all" });
+			return undefined;
+		}
+		return usable;
 	} catch (err) {
 		log({ kind: "confirm-error", error: String(err) });
 		return undefined;
 	}
 }
+
 
 /* --------------------------------------------------------------- installing */
 
@@ -718,6 +892,8 @@ interface Detection {
 	needs: NeedSignal[];
 	installed: InstalledSkill[];
 	candidates: Candidate[];
+	/** best candidate per distinct capability, so several gaps surface at once */
+	perNeed: Array<{ need: NeedSignal; candidates: Candidate[] }>;
 }
 
 async function detect(prompt: string, cfg: AutopilotConfig, opts: { live?: boolean } = {}): Promise<Detection> {
@@ -735,24 +911,43 @@ async function detect(prompt: string, cfg: AutopilotConfig, opts: { live?: boole
 		limit: cfg.maxCandidatesInNote,
 		skip: (e: CatalogEntry) => isInstalled(e, installed),
 	};
-	let candidates = rankCandidates(cat.skills, tokens, rankOpts);
+	let pool: CatalogEntry[] = [...cat.skills];
+	let candidates = rankCandidates(pool, tokens, rankOpts);
+
+	// Distinct capability phrases, so "convert this PDF to xlsx and chart it"
+	// yields one candidate per need instead of one winner for the whole prompt.
+	const capabilityNeeds = needs.filter((n) => n.query && n.kind !== "explicit");
+	const perNeed: Detection["perNeed"] = [];
+
+	const rankPerNeed = () => {
+		perNeed.length = 0;
+		for (const need of capabilityNeeds) {
+			const needTokens = tokenize(need.query);
+			if (!needTokens.length) continue;
+			const cands = rankCandidates(pool, needTokens, { ...rankOpts, limit: 3 });
+			if (cands.length) perNeed.push({ need, candidates: cands });
+		}
+	};
+	rankPerNeed();
 
 	// Local catalog missed but the turn clearly needs a capability: ask the store.
-	if (opts.live && candidates.length === 0 && needQuery) {
+	if (opts.live && needQuery && (candidates.length === 0 || perNeed.length === 0)) {
 		try {
 			const { results } = await Promise.race([
 				searchSkillHub(needQuery),
 				new Promise<{ results: CatalogEntry[] }>((resolve) => setTimeout(() => resolve({ results: [] }), 4000)),
 			]);
 			if (results.length) {
-				candidates = rankCandidates([...results, ...cat.skills], tokens, rankOpts);
+				pool = [...results, ...pool];
+				candidates = rankCandidates(pool, tokens, rankOpts);
 				mergeIntoCatalog(results);
+				rankPerNeed();
 			}
 		} catch {
 			/* stay with local results */
 		}
 	}
-	return { needs, installed, candidates };
+	return { needs, installed, candidates, perNeed };
 }
 
 /** Remember live search hits so local prediction improves over time. */
@@ -1007,35 +1202,33 @@ async function runPlanPipeline(
 		return undefined;
 	}
 
-	const shown = needs.slice(0, budget);
+	const planned = needs.slice(0, budget);
 	const skipped = needs.slice(budget);
 
-	const lines = shown.map(
-		(n) => `  步骤 ${n.step.step} → ${n.chosen.publicSlug} v${n.chosen.entry.version || "?"}（相关度 ${n.chosen.score}）`,
-	);
-	const message = [
-		...lines,
-		"",
-		"评估依据：与计划步骤的关键词相关性（slug×3 / 名称×2 / 描述×1），已排除已安装项与策略禁止项。",
-		skipped.length ? `另有 ${skipped.length} 个超出本轮安装预算，本轮不装。` : "",
-	]
-		.filter(Boolean)
-		.join("\n");
+	// One checkbox per step; the reason line is the step itself, so the user can
+	// see why each skill is being proposed.
+	const items: PickItem[] = planned.map((n) => ({
+		candidate: n.chosen,
+		reason: `步骤 ${n.step.step}：${n.step.text.slice(0, 80)}`,
+	}));
 
-	let ok = false;
-	if (ctx.hasUI) {
-		try {
-			ok = await ctx.ui.confirm(`计划需要 ${shown.length} 个技能，安装后继续执行？`, message);
-		} catch {
-			ok = false;
-		}
-	}
-	if (!ok) {
-		for (const n of shown) declinedSlugs.add(normalizeId(n.chosen.publicSlug));
-		log({ kind: "plan-declined", skills: shown.map((n) => n.chosen.publicSlug) });
+	const picked = await askWhichToInstall(
+		items,
+		cfg,
+		ctx,
+		`计划需要 ${planned.length} 个技能，勾选后安装并继续`,
+		budget,
+	);
+	if (!picked || !picked.length) {
+		for (const n of planned) declinedSlugs.add(normalizeId(n.chosen.publicSlug));
+		log({ kind: "plan-declined", skills: planned.map((n) => n.chosen.publicSlug) });
 		return { needs, outcomes: [], skipped, asked: ctx.hasUI, note: "" };
 	}
 
+	// keep step order, and drop anything the user unticked
+	const shown = planned.filter((n) =>
+		picked.some((it) => normalizeId(it.candidate.publicSlug) === normalizeId(n.chosen.publicSlug)),
+	);
 	const outcomes: InstallOutcome[] = [];
 	for (let i = 0; i < shown.length; i++) {
 		const n = shown[i];
@@ -1407,42 +1600,43 @@ export default function skillAutopilot(pi: ExtensionAPI) {
 						/* ignore */
 					}
 				} else {
-					const chosen = await askWhichToInstall(
-						detection.candidates,
+					const items = buildAdHocItems(detection, cfg);
+					const picked = await askWhichToInstall(
+						items,
 						cfg,
 						ctx,
-						"检测到缺失的技能，安装后继续执行本轮任务？",
+						"检测到缺失的技能，勾选后安装并继续本轮任务",
+						remainingBudget(cfg),
 					);
-					if (chosen) {
+					for (const item of picked ?? []) {
+						const chosen = item.candidate;
 						try {
-							ctx.ui.setStatus("skill-autopilot", `正在安装 ${chosen.publicSlug} …`);
-							ctx.ui.notify(`正在安装 ${chosen.publicSlug} …（约 10–20 秒）`, "info");
+							ctx.ui.setStatus(
+								"skill-autopilot",
+								`安装 ${chosen.publicSlug}（${confirmedInstalls.length + 1}/${picked!.length}）…`,
+							);
 						} catch {
 							/* ignore */
 						}
 						const outcome = await installSkill(chosen, cfg, "confirm", ctx);
-						try {
-							ctx.ui.setStatus("skill-autopilot", undefined);
-						} catch {
-							/* ignore */
-						}
 						confirmedInstalls.push(outcome);
 						if (outcome.ok) {
-							// stop advertising what is now installed
 							detection.candidates = detection.candidates.filter(
 								(c) => normalizeId(c.publicSlug) !== normalizeId(chosen.publicSlug),
 							);
-							try {
-								ctx.ui.notify(`已安装 ${outcome.slug}，继续执行你的任务`, "info");
-							} catch {
-								/* ignore */
-							}
-						} else {
-							try {
-								ctx.ui.notify(`安装失败：${outcome.message}（继续执行任务）`, "error");
-							} catch {
-								/* ignore */
-							}
+						}
+					}
+					try {
+						ctx.ui.setStatus("skill-autopilot", undefined);
+					} catch {
+						/* ignore */
+					}
+					if (confirmedInstalls.length) {
+						const okCount = confirmedInstalls.filter((o) => o.ok).length;
+						try {
+							ctx.ui.notify(`已安装 ${okCount}/${confirmedInstalls.length}，继续执行你的任务`, okCount ? "info" : "warning");
+						} catch {
+							/* ignore */
 						}
 					}
 				}
