@@ -766,7 +766,7 @@ function mergeIntoCatalog(entries: CatalogEntry[]) {
 	writeJson(CATALOG_PATH, merged);
 }
 
-function renderNote(d: Detection, cfg: AutopilotConfig, autoInstalled: InstallOutcome[]): string {
+function renderNote(d: Detection, cfg: AutopilotConfig, confirmedInstalls: InstallOutcome[]): string {
 	const lines: string[] = [];
 	lines.push("[skill-autopilot] 能力检查 (mode=" + cfg.mode + ")");
 	if (d.needs.length) {
@@ -778,14 +778,15 @@ function renderNote(d: Detection, cfg: AutopilotConfig, autoInstalled: InstallOu
 	} else {
 		lines.push("已安装技能: 无");
 	}
-	if (autoInstalled.length) {
-		for (const r of autoInstalled) {
+	if (confirmedInstalls.length) {
+		for (const r of confirmedInstalls) {
 			if (r.ok) {
+				const risk = r.risk && r.risk.level !== "none" ? `，扫描：${describeLevel(r.risk.level)}风险` : "";
 				lines.push(
-					`已自动安装: ${r.slug} -> ${r.path}/SKILL.md。若本轮需要该能力，请先用 read 读取该 SKILL.md 并遵循其说明。`,
+					`已安装（用户确认）: ${r.slug}${risk} -> ${r.path}/SKILL.md。本轮任务现在就应该先用 read 读取该 SKILL.md 并遵循它执行。`,
 				);
 			} else {
-				lines.push(`自动安装失败: ${r.slug} (${r.message})`);
+				lines.push(`安装未完成: ${r.slug} (${r.message})。不要因此停下，用现有能力继续任务。`);
 			}
 		}
 	}
@@ -1387,7 +1388,7 @@ export default function skillAutopilot(pi: ExtensionAPI) {
 			return;
 		}
 
-		const autoInstalled: InstallOutcome[] = [];
+		const confirmedInstalls: InstallOutcome[] = [];
 		const explicit = detection.needs.some((n) => n.kind === "explicit");
 
 		// mode=confirm: ask the user first, then install and continue THIS turn.
@@ -1425,7 +1426,7 @@ export default function skillAutopilot(pi: ExtensionAPI) {
 						} catch {
 							/* ignore */
 						}
-						autoInstalled.push(outcome);
+						confirmedInstalls.push(outcome);
 						if (outcome.ok) {
 							// stop advertising what is now installed
 							detection.candidates = detection.candidates.filter(
@@ -1449,7 +1450,7 @@ export default function skillAutopilot(pi: ExtensionAPI) {
 		}
 
 		// Only speak up when something is actionable.
-		const worthNote = autoInstalled.length > 0 || (explicit && !!prompt) || detection.candidates.length > 0;
+		const worthNote = confirmedInstalls.length > 0 || (explicit && !!prompt) || detection.candidates.length > 0;
 		if (!worthNote) {
 			log({
 				kind: "turn",
@@ -1465,14 +1466,14 @@ export default function skillAutopilot(pi: ExtensionAPI) {
 			needs: detection.needs.map((n) => n.label),
 			candidates: detection.candidates.map((c) => ({ slug: c.publicSlug, score: c.score })),
 			installed: detection.installed.length,
-			autoInstalled: autoInstalled.map((a) => a.slug),
+			confirmedInstalls: confirmedInstalls.map((a) => a.slug),
 			mode: cfg.mode,
 		});
 
 		return {
 			message: {
 				customType: "skill-autopilot",
-				content: renderNote(detection, cfg, autoInstalled),
+				content: renderNote(detection, cfg, confirmedInstalls),
 				display: false,
 			},
 		};
