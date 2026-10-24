@@ -60,6 +60,7 @@
     "@earendil-works/pi-tui": "^1.4.0"
   },
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   }
 }

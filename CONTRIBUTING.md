@@ -60,6 +60,19 @@ Please do not add tool names to an allowlist in `index.ts`; `planToolPattern` ex
 - Use the default (capability) for tool-shaped needs (`pdf`, `excel spreadsheet`, `web scraping crawler`).
 - Match what a store search would return, not what the user said. Short, common phrases search better.
 
+## Publishing to npm
+
+`package.json` pins `publishConfig.registry` to `https://registry.npmjs.org/`, because a
+read-only mirror (for example `registry.npmmirror.com`) cannot accept `adduser` or
+`publish`. Only the auth commands need the explicit flag:
+
+```bash
+npm adduser --auth-type=legacy --registry=https://registry.npmjs.org
+npm whoami --registry=https://registry.npmjs.org
+npm install            # prepack runs tsc, so devDependencies must exist
+npm publish            # publishConfig routes it to npmjs.org
+```
+
 ## Reporting bugs
 
 Include:
