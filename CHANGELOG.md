@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.3
+
+- **The suggestion note now lists one skill per detected capability.** "PDF → Excel → chart" used to show three near-identical Excel skills because the note used the flat relevance ranking; it now walks the per-capability groups first and only fills with flat matches if there is room.
+
 ## 0.6.2
 
 Fewer false positives, and a regression fix.

@@ -992,8 +992,26 @@ function renderNote(d: Detection, cfg: AutopilotConfig, confirmedInstalls: Insta
 		}
 	}
 	if (d.candidates.length) {
-		lines.push("商店中存在但未安装的相关技能:");
+		// One skill per detected capability, so "pdf to excel and chart it" does not
+		// show three near-identical Excel skills. Falls back to the flat ranking.
+		const shown: Candidate[] = [];
+		const seen = new Set<string>();
+		for (const group of d.perNeed) {
+			const best = group.candidates.find((c) => !seen.has(normalizeId(c.publicSlug)));
+			if (!best) continue;
+			seen.add(normalizeId(best.publicSlug));
+			shown.push(best);
+			if (shown.length >= cfg.maxCandidatesInNote) break;
+		}
 		for (const c of d.candidates) {
+			if (shown.length >= cfg.maxCandidatesInNote) break;
+			if (seen.has(normalizeId(c.publicSlug))) continue;
+			seen.add(normalizeId(c.publicSlug));
+			shown.push(c);
+		}
+
+		lines.push("商店中存在但未安装的相关技能:");
+		for (const c of shown) {
 			const desc = (c.entry.description || "").replace(/\s+/g, " ").slice(0, 110);
 			lines.push(`  - ${c.publicSlug} v${c.entry.version || "?"} (score ${c.score}) — ${desc}`);
 		}

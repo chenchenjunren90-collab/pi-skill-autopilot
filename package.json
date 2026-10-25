@@ -1,6 +1,6 @@
 {
   "name": "pi-skill-autopilot",
-  "version": "0.6.2",
+  "version": "0.6.3",
   "description": "Plan-aware skill provisioning for pi: after a plan or goal is produced, it predicts which skills each step needs, scores SkillHub store matches, asks you to confirm the batch, installs them, and continues the plan.",
   "license": "MIT",
   "author": "pi-skill-autopilot contributors",
