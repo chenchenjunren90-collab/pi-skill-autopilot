@@ -91,8 +91,7 @@ export function tokenize(text: string): string[] {
 const EXT_HINTS: Record<string, string> = {
 	pdf: "pdf", xlsx: "excel spreadsheet", xls: "excel spreadsheet", csv: "csv data",
 	docx: "word document", doc: "word document", pptx: "powerpoint slides", ppt: "powerpoint slides",
-	key: "keynote slides", png: "image processing", jpg: "image processing", jpeg: "image processing",
-	webp: "image processing", gif: "image processing", svg: "svg graphics",
+	key: "keynote slides",
 	mp4: "video processing", mov: "video processing", avi: "video processing", mkv: "video processing",
 	mp3: "audio processing", wav: "audio processing", m4a: "audio processing", flac: "audio processing",
 	zip: "archive zip", tar: "archive tar", gz: "archive gzip", rar: "archive extraction",
@@ -162,15 +161,30 @@ export function detectNeeds(text: string): NeedSignal[] {
 		push({ kind: "explicit", label: "explicit-skill-request", query: "", pos: 0 });
 	}
 
+/**
+ * Image extensions only count when the text also asks for image *work*.
+ * A bare `C:\...\screenshot.png` is an attachment the model can already read;
+ * treating it as a capability need used to propose image-generation and
+ * speech-to-text skills for every screenshot (issue #1).
+ */
+const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "webp", "gif", "bmp", "tiff", "tif", "heic", "svg", "avif"]);
+
+const IMAGE_ACTION_RE =
+	/(生成|绘制|画一|画个|画张|设计|制作|压缩|裁剪|缩放|转成|转换|改尺寸|修图|抠图|合成|渲染|海报|封面|插画|create|generate|draw|render|convert|resize|compress|crop|retouch|design)/i;
+
+
 	// file extensions: "a.pdf" and bare "pdf" both count
 	for (const m of lower.matchAll(/[\w\u4e00-\u9fff-]+\.([a-z0-9]{1,8})\b/g)) {
 		const ext = m[1];
 		const q = EXT_HINTS[ext];
 		if (q) push({ kind: "extension", label: ext, query: q, pos: m.index ?? 0 });
 	}
-	for (const word of lower.matchAll(/\b[a-z0-9]{2,8}\b/g)) {
-		const q = EXT_HINTS[word[0]];
-		if (q) push({ kind: "extension", label: word[0], query: q, pos: word.index ?? 0 });
+	// images are only a need when the text asks for image work
+	if (IMAGE_ACTION_RE.test(lower)) {
+		for (const m of lower.matchAll(/(?:^|[^a-z0-9])([a-z0-9]{2,5})(?![a-z0-9])/g)) {
+			if (!IMAGE_EXTS.has(m[1])) continue;
+			push({ kind: "extension", label: m[1], query: "image processing", pos: m.index ?? 0 });
+		}
 	}
 
 	// capability / domain keywords

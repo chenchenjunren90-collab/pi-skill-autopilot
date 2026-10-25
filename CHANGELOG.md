@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.1
+
+- **Image extensions no longer trigger detection on their own** (issue #1). A bare `C:\...\screenshot.png` — or any message that merely references an image — used to propose image-generation and speech-to-text skills. pi reads images natively, so the file is an input, not a capability gap. Image extensions now need an action word (生成/绘制/压缩/转换/create/draw/compress…).
+- Regression-covered: a bare image path yields zero needs; "png → jpg 压缩" and "生成海报 png" still do.
+
 ## 0.6.0
 
 Multi-select and multi-gap detection.
