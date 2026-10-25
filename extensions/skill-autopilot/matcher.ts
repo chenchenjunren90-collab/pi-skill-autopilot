@@ -55,6 +55,12 @@ const EN_STOP = new Set([
 	"about", "must", "when", "what", "which", "how", "why", "who", "all", "any", "but", "not", "now", "new",
 	"file", "files", "tool", "tools", "skill", "skills", "task", "work", "based", "support", "supports",
 	"one", "two", "get", "set", "add", "run", "let", "way", "may", "own", "same", "here", "each", "other",
+	// meta vocabulary: these appear in half the store's package names, so matching
+	// on them turns every sentence about the tooling itself into a suggestion
+	"plugin", "plugins", "extension", "extensions", "package", "packages", "install", "installed",
+	"installing", "issue", "issues", "bug", "bugs", "fix", "fixes", "feature", "features",
+	"agent", "agents", "prompt", "prompts", "config", "configure", "settings", "setting",
+	"repo", "commit", "branch", "release", "publish", "version", "submit", "report",
 ]);
 
 const CJK_RE = /[\u3400-\u9FFF\uF900-\uFAFF]/;
@@ -179,11 +185,20 @@ const IMAGE_ACTION_RE =
 		const q = EXT_HINTS[ext];
 		if (q) push({ kind: "extension", label: ext, query: q, pos: m.index ?? 0 });
 	}
+	for (const m of lower.matchAll(/(?:^|[^a-z0-9])([a-z0-9]{2,8})(?![a-z0-9])/g)) {
+		const q = EXT_HINTS[m[1]];
+		if (q) push({ kind: "extension", label: m[1], query: q, pos: m.index ?? 0 });
+	}
+
 	// images are only a need when the text asks for image work
 	if (IMAGE_ACTION_RE.test(lower)) {
 		for (const m of lower.matchAll(/(?:^|[^a-z0-9])([a-z0-9]{2,5})(?![a-z0-9])/g)) {
 			if (!IMAGE_EXTS.has(m[1])) continue;
 			push({ kind: "extension", label: m[1], query: "image processing", pos: m.index ?? 0 });
+		}
+		// an explicit image noun is enough on its own (no extension needed)
+		if (/(海报|封面|插画|配图|图标|banner|poster|illustration|icon)/i.test(lower)) {
+			push({ kind: "keyword", label: "image generation", query: "image generation", pos: 0 });
 		}
 	}
 

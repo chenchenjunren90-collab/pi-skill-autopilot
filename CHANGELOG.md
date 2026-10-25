@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.6.2
+
+Fewer false positives, and a regression fix.
+
+- **Suggestions now require a capability signal.** Previously every prompt was scored against skill names, so a sentence *about the tooling* ("skill", "plugin", "issue") matched half the store and injected a suggestion. Without a recognised capability (file type or capability word) nothing is proposed; `skill_ensure` still covers what the model judges it needs.
+- **Meta vocabulary is stopworded** — plugin/extension/package/install/issue/bug/fix/feature/agent/prompt/config/repo/commit/branch/release/publish/version no longer count as matching tokens.
+- **Identical suggestion sets are not repeated** — if the same candidate list was already injected, the next turn stays silent instead of repeating it.
+- **Regression fix**: bare extension words (`mp4`, `csv`, `zip`, …) had stopped being recognised after the 0.6.1 image change; only `file.ext` forms worked. Restored, with boundaries that do not need ``.
+- **Image nouns** (`海报`, `封面`, `插画`, `banner`, `icon`, …) now trigger image work even without a file extension.
+- **Release automation**: `.github/workflows/publish.yml` publishes on `v*` tags via OIDC trusted publishing with provenance (needs a one-time trusted-publisher entry on npmjs.com).
+
 ## 0.6.1
 
 - **Image extensions no longer trigger detection on their own** (issue #1). A bare `C:\...\screenshot.png` — or any message that merely references an image — used to propose image-generation and speech-to-text skills. pi reads images natively, so the file is an input, not a capability gap. Image extensions now need an action word (生成/绘制/压缩/转换/create/draw/compress…).

@@ -1,0 +1,56 @@
+name: Publish
+
+# Publishes to npm on a version tag using trusted publishing (OIDC):
+# no long-lived token, and npm attaches a provenance attestation.
+#
+# One-time setup before this workflow can run:
+#   1. npmjs.com → package pi-skill-autopilot → Settings → Trusted publishing
+#   2. Publisher: GitHub Actions
+#      Organization/user: chenchenjunren90-collab
+#      Repository:        pi-skill-autopilot
+#      Workflow filename: publish.yml
+#      Environment:       (leave empty)
+# Until that is configured this job fails with an authentication error — that is
+# expected, and it does not affect the normal push/PR CI.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+  id-token: write # required for OIDC trusted publishing
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # npm 12 (needed for trusted publishing) requires ^22.22 || ^24.15 || >=26
+          node-version: 24
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Upgrade npm for trusted publishing
+        run: npm install -g npm@latest
+
+      - name: Install dev dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Verify the tag matches package.json
+        run: |
+          PKG=$(node -p "require('./package.json').version")
+          TAG=${GITHUB_REF_NAME#v}
+          if [ "$PKG" != "$TAG" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match package.json version $PKG"
+            exit 1
+          fi
+
+      - name: Publish with provenance
+        run: npm publish --provenance --access public

@@ -486,6 +486,9 @@ function budgetLeft(cfg: AutopilotConfig, sessionInstalls: number): boolean {
 /** Slugs the user already declined in this session — don't nag again. */
 const declinedSlugs = new Set<string>();
 
+/** Last suggestion set that was injected, so the same list is not repeated. */
+let lastNoteSignature = "";
+
 function usableCandidates(candidates: Candidate[], cfg: AutopilotConfig): Candidate[] {
 	return candidates.filter(
 		(c) => !isDenied(c, cfg) && !declinedSlugs.has(normalizeId(c.publicSlug)) && !inFlight.has(normalizeId(c.publicSlug)),
@@ -912,11 +915,14 @@ async function detect(prompt: string, cfg: AutopilotConfig, opts: { live?: boole
 		skip: (e: CatalogEntry) => isInstalled(e, installed),
 	};
 	let pool: CatalogEntry[] = [...cat.skills];
-	let candidates = rankCandidates(pool, tokens, rankOpts);
 
 	// Distinct capability phrases, so "convert this PDF to xlsx and chart it"
 	// yields one candidate per need instead of one winner for the whole prompt.
 	const capabilityNeeds = needs.filter((n) => n.query && n.kind !== "explicit");
+
+	// Without a capability signal there is nothing to fill: matching on raw prompt
+	// words is what made every message about the tooling itself propose skills.
+	let candidates = capabilityNeeds.length ? rankCandidates(pool, tokens, rankOpts) : [];
 	const perNeed: Detection["perNeed"] = [];
 
 	const rankPerNeed = () => {
@@ -1644,6 +1650,14 @@ export default function skillAutopilot(pi: ExtensionAPI) {
 		}
 
 		// Only speak up when something is actionable.
+		const noteSig = detection.candidates.map((c) => normalizeId(c.publicSlug)).sort().join("|");
+		if (noteSig && noteSig === lastNoteSignature) {
+			// the model already saw exactly this list; repeating it only burns context
+			log({ kind: "turn", needs: detection.needs.map((n) => n.label), candidates: detection.candidates.length, repeated: true });
+			return;
+		}
+		if (noteSig) lastNoteSignature = noteSig;
+
 		const worthNote = confirmedInstalls.length > 0 || (explicit && !!prompt) || detection.candidates.length > 0;
 		if (!worthNote) {
 			log({
